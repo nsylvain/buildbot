@@ -286,7 +286,7 @@ class Rss20StatusResource(FeedResource):
                                                        pubDate)))
             data += ('    <guid isPermaLink="false">%s</guid>\n' % guid)
         data += ('      </item>\n')
-        return data
+        return str(data)
 
     def footer(self, request):
         data = ('  </channel>\n'
@@ -355,7 +355,7 @@ class Atom10StatusResource(FeedResource):
         data += ('      <name>Build Bot</name>\n')
         data += ('    </author>\n')
         data += ('  </entry>\n')
-        return data
+        return str(data)
 
     def footer(self, request):
         data = ('</feed>')
