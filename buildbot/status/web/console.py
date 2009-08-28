@@ -46,11 +46,12 @@ class ANYBRANCH: pass # a flag value, used below
 class DevRevision:
     """Helper class that contains all the information we need for a revision."""
 
-    def __init__(self, revision, who, comments, date):
+    def __init__(self, revision, who, comments, date, revlink):
         self.revision = revision
         self.comments = comments
         self.who = who
         self.date = date
+        self.revlink = revlink
 
 
 class DevBuild:
@@ -127,6 +128,18 @@ class ConsoleStatusResource(HtmlResource):
     ## Data gathering functions
     ##
 
+    def getHeadBuild(self, builder):
+        """Get the most recent build for the given builder.
+        """
+        build = builder.getBuild(-1)
+
+        # HACK: Work around #601, the head build may be None if it is
+        # locked.
+        if build is None:
+            build = builder.getBuild(-2)
+
+        return build
+
     def fetchChangesFromHistory(self, status, max_depth, max_builds, debugInfo):
         """Look at the history of the builders and try to fetch as many changes
         as possible. We need this when the main source does not contain enough
@@ -147,7 +160,7 @@ class ConsoleStatusResource(HtmlResource):
                 break
             
             builder = status.getBuilder(builderName)
-            build = builder.getBuild(-1)
+            build = self.getHeadBuild(builder)
             depth = 0
             while build and depth < max_depth and build_count < max_builds:
                 depth += 1
@@ -223,8 +236,10 @@ class ConsoleStatusResource(HtmlResource):
             change = allChanges[i]
             if branch == ANYBRANCH or branch == change.branch:
                 if not devName or change.who in devName:
+                    
                     rev = DevRevision(change.revision, change.who,
-                                      change.comments, change.getTime())
+                                      change.comments, change.getTime(),
+                                      getattr(change, 'revlink', None))
                     revisions.append(rev)
 
         return revisions
@@ -268,7 +283,7 @@ class ConsoleStatusResource(HtmlResource):
         revision = lastRevision 
 
         builds = []
-        build = builder.getBuild(-1)
+        build = self.getHeadBuild(builder)
         number = 0
         while build and number < numBuilds:
             debugInfo["builds_scanned"] += 1
@@ -280,12 +295,20 @@ class ConsoleStatusResource(HtmlResource):
             got_rev = -1
             try:
                 got_rev = build.getProperty("got_revision")
+                try:
+                    got_rev = int(got_rev)
+                except:
+                    got_rev = -1
             except KeyError:
                 pass
 
             try:
                 if got_rev == -1:
                    got_rev = build.getProperty("revision")
+                try:
+                    got_rev = int(got_rev)
+                except:
+                    got_rev = -1
             except:
                 pass
 
@@ -461,7 +484,7 @@ class ConsoleStatusResource(HtmlResource):
               else:
                   # If not offline, then display the result of the last
                   # finished build.
-                  build = status.getBuilder(builder).getBuild(-1)
+                  build = self.getHeadBuild(status.getBuilder(builder))
                   while build and not build.isFinished():
                       build = build.getPreviousBuild()
 
@@ -644,6 +667,12 @@ class ConsoleStatusResource(HtmlResource):
 
             # Fill the dictionnary with these new information
             subs["revision"] = revision.revision
+            if revision.revlink:
+                subs["revision_link"] = ("<a href=\"%s\">%s</a>" 
+                                         % (revision.revlink,
+                                            revision.revision))
+            else:
+                subs["revision_link"] = revision.revision
             subs["who"] = revision.who
             subs["date"] = revision.date
             comment = revision.comments or ""
