@@ -397,9 +397,12 @@ class ShellCommand:
         return self.deferred
 
     def _startCommand(self):
-        # ensure workdir exists
-        if not os.path.isdir(self.workdir):
-            os.makedirs(self.workdir)
+        # ensure workdir exists. Use os.path.normpath because this can be
+        # called with trailing '..' components, which can cause os.makedirs
+        # to fail.
+        workdir = os.path.normpath(self.workdir)
+        if not os.path.isdir(workdir):
+            os.makedirs(workdir)
         log.msg("ShellCommand._startCommand")
         if self.notreally:
             self.sendStatus({'header': "command '%s' in dir %s" % \

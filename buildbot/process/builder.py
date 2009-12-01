@@ -736,6 +736,16 @@ class Builder(pb.Referenceable):
                 self.builder_status.removeBuildRequest(br.status)
                 mergers.append(br)
         requests = [req] + mergers
+        enforced_sb = [request.properties.getProperty('slavename')
+                       for request in requests
+                       if request.properties.getProperty('slavename')]
+        enforced_sb = list(set(enforced_sb))
+        if len(enforced_sb) == 1:
+            if enforced_sb[0] not in self.slaves:
+                # It's better to not use slaves at all than use a random one.
+                log.msg("%s: %s is not a valid slave" % (self, enforced_sb[0]))
+                return
+            sb = enforced_sb[0]
 
         # Create a new build from our build factory and set ourself as the
         # builder.

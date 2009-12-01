@@ -13,7 +13,7 @@ from buildbot.status.web import console_html as res
 from buildbot.status.web import console_js as js
 
 def getResultsClass(results, prevResults, inProgress):
-    """Given the current and past results, return the class that will be used
+    """Given the current and past results, returns the class that will be used
     by the css to display the right color for a box."""
 
     if inProgress:
@@ -37,11 +37,111 @@ def getResultsClass(results, prevResults, inProgress):
         else:
             # The previous build also failed.
             return "warnings"
-  
+
     # Any other results? Like EXCEPTION?
     return "exception"
 
+cachedBoxes = dict()
+
 class ANYBRANCH: pass # a flag value, used below
+
+class CachedStatusBox:
+    def __init__(self, color, title, details, url, tag):
+        self.color = color
+        self.title = title
+        self.details = details
+        self.url = url
+        self.tag = tag
+
+
+class CacheStatus:
+    def __init__(self):
+      self.allBoxes = dict()
+      self.lastRevisions = dict()
+
+    def display(self):
+        data = ""
+        for builder in self.allBoxes:
+            lastRevision = -1
+            try:
+                lastRevision = self.lastRevisions[builder]
+            except:
+                pass
+            data += "<br> %s is up to revision %d" % (builder, lastRevision)
+            for revision in self.allBoxes[builder]:
+               data += "<br>%s %s %s" % (builder, revision,
+                                         self.allBoxes[builder][revision].color)
+        return data
+
+    def insert(self, builderName, revision, color, title, details, url, tag):
+        box = CachedStatusBox(color, title, details, url, tag)
+        try:
+            test = self.allBoxes[builderName]
+        except:
+            self.allBoxes[builderName] = dict()
+
+        self.allBoxes[builderName][revision] = box
+
+    def get(self, builderName, revision):
+        try:
+            return self.allBoxes[builderName][revision]
+        except:
+            return None
+
+    def trim(self):
+        for builder in self.allBoxes:
+          allRevs = []
+          for revision in self.allBoxes[builder]:
+            allRevs.append(revision)
+
+          if len(allRevs) > 150:
+             allRevs.sort()
+             deleteCount = len(allRevs) - 150
+             for i in range(0, deleteCount):
+               del self.allBoxes[builder][allRevs[i]]
+
+    def update(self, builderName, lastRevision):
+        currentRevision = 0
+        try:
+            currentRevision = self.lastRevisions[builderName]
+        except:
+            pass
+
+        if currentRevision < lastRevision:
+            self.lastRevisions[builderName] = lastRevision
+
+    def getRevision(self, builderName):
+        try:
+            return self.lastRevisions[builderName]
+        except:
+            return None
+
+
+class TemporaryCache:
+    def __init__(self):
+      self.lastRevisions = dict()
+
+    def display(self):
+        data = ""
+        for builder in self.lastRevisions:
+            data += "<br>%s: %s" % (builder, self.lastRevisions[builder])
+
+        return data
+
+    def insert(self, builderName, revision):
+        currentRevision = 0
+        try:
+            currentRevision = self.lastRevisions[builderName]
+        except:
+            pass
+
+        if currentRevision < revision:
+            self.lastRevisions[builderName] = revision
+
+    def updateGlobalCache(self, global_cache):
+        for builder in self.lastRevisions:
+            global_cache.update(builder, self.lastRevisions[builder])
+
 
 class DevRevision:
     """Helper class that contains all the information we need for a revision."""
@@ -59,7 +159,7 @@ class DevBuild:
 
     def __init__(self, revision, results, number, isFinished, text, eta, details):
         self.revision = revision
-        self.results = results 
+        self.results = results
         self.number = number
         self.isFinished = isFinished
         self.text = text
@@ -83,6 +183,7 @@ class ConsoleStatusResource(HtmlResource):
         self.status = None
         self.control = None
         self.changemaster = None
+        self.cache = CacheStatus()
         self.initialRevs = None
 
         self.allowForce = allowForce
@@ -100,6 +201,10 @@ class ConsoleStatusResource(HtmlResource):
         return request.site.buildbot_service.parent.change_svc
 
     def head(self, request):
+        jsonFormat = request.args.get("json", [False])[0]
+        if jsonFormat:
+          return ""
+
         # Start by adding all the javascript functions we have.
         head = "<script type='text/javascript'> %s </script>" % js.JAVASCRIPT
 
@@ -113,10 +218,6 @@ class ConsoleStatusResource(HtmlResource):
                   reload_time = max(reload_time, 15)
             except ValueError:
                 pass
-
-        # Sets the default reload time to 60 seconds.
-        if not reload_time:
-            reload_time = 60
 
         # Append the tag to refresh the page. 
         if reload_time is not None and reload_time != 0:
@@ -143,22 +244,22 @@ class ConsoleStatusResource(HtmlResource):
     def fetchChangesFromHistory(self, status, max_depth, max_builds, debugInfo):
         """Look at the history of the builders and try to fetch as many changes
         as possible. We need this when the main source does not contain enough
-        sourcestamps. 
+        sourcestamps.
 
         max_depth defines how many builds we will parse for a given builder.
         max_builds defines how many builds total we want to parse. This is to
             limit the amount of time we spend in this function.
-        
+
         This function is sub-optimal, but the information returned by this
         function is cached, so this function won't be called more than once.
         """
-        
+
         allChanges = list()
         build_count = 0
         for builderName in status.getBuilderNames()[:]:
             if build_count > max_builds:
                 break
-            
+
             builder = status.getBuilder(builderName)
             build = self.getHeadBuild(builder)
             depth = 0
@@ -170,8 +271,8 @@ class ConsoleStatusResource(HtmlResource):
                 build = build.getPreviousBuild()
 
         debugInfo["source_fetch_len"] = len(allChanges)
-        return allChanges                
-        
+        return allChanges
+
     def getAllChanges(self, source, status, debugInfo):
         """Return all the changes we can find at this time. If |source| does not
         not have enough (less than 25), we try to fetch more from the builders
@@ -220,10 +321,10 @@ class ConsoleStatusResource(HtmlResource):
             do not want to inspect all of them or it would be too slow.
         branch is the branch we are interested in. Changes not in this branch
             will be ignored.
-        devName is the developper name. Changes have not been submitted by this
-            person will be ignored.
+        devName is the committer username. Changes that have not been submitted
+            by this person will be ignored.
         """
-        
+
         revisions = []
 
         if not allChanges:
@@ -236,7 +337,6 @@ class ConsoleStatusResource(HtmlResource):
             change = allChanges[i]
             if branch == ANYBRANCH or branch == change.branch:
                 if not devName or change.who in devName:
-                    
                     rev = DevRevision(change.revision, change.who,
                                       change.comments, change.getTime(),
                                       getattr(change, 'revlink', None))
@@ -280,7 +380,10 @@ class ConsoleStatusResource(HtmlResource):
         build, and we go down until we find a build that was built prior to the
         last change we are interested in."""
 
-        revision = lastRevision 
+        revision = lastRevision
+        cachedRevision = self.cache.getRevision(builderName)
+        if cachedRevision and cachedRevision > lastRevision:
+            revision = cachedRevision
 
         builds = []
         build = self.getHeadBuild(builder)
@@ -341,7 +444,7 @@ class ConsoleStatusResource(HtmlResource):
         display the console page. The key is the builder name, and the value is
         an array of build we care about. We also returns a dictionnary of
         builders we care about. The key is it's category.
- 
+
         lastRevision is the last revision we want to display in the page.
         categories is a list of categories to display. It is coming from the
             HTTP GET parameters.
@@ -431,11 +534,12 @@ class ConsoleStatusResource(HtmlResource):
         data += res.main_line_category_footer.substitute(subs)
         return data
 
-    def displaySlaveLine(self, status, builderList, debugInfo, subs):
+    def displaySlaveLine(self, status, builderList, debugInfo, subs, jsonFormat=False):
         """Display a line the shows the current status for all the builders we
         care about."""
 
         data = ""
+        json = ""
 
         # Display the first TD (empty) element.
         subs["last"] = ""
@@ -455,6 +559,7 @@ class ConsoleStatusResource(HtmlResource):
         # Get the catefories, and order them alphabetically.
         categories = builderList.keys()
         categories.sort()
+        json += '['
 
         # For each category, we display each builder.
         for category in categories:
@@ -492,18 +597,28 @@ class ConsoleStatusResource(HtmlResource):
                       subs["color"] = getResultsClass(build.getResults(), None,
                                                       False)
 
+              json += ("{'url': '%s', 'title': '%s', 'color': '%s',"
+                       " 'name': '%s'}," % (subs["url"], subs["title"],
+                                            subs["color"],
+                                            urllib.quote(builder)))
+
               data += res.main_line_slave_status.substitute(subs)
 
+        json += ']'
         data += res.main_line_slave_footer.substitute(subs)
+
+        if jsonFormat:
+            return json
         return data
 
-    def displayStatusLine(self, builderList, allBuilds, revision, debugInfo,
-                          subs):
+    def displayStatusLine(self, builderList, allBuilds, revision, tempCache,
+                          debugInfo, subs, jsonFormat=False):
         """Display the boxes that represent the status of each builder in the
         first build "revision" was in. Returns an HTML list of errors that
         happened during these builds."""
 
         data = ""
+        json = ""
 
         # Display the first TD (empty) element.
         subs["last"] = ""
@@ -521,7 +636,8 @@ class ConsoleStatusResource(HtmlResource):
         # Sort the categories.
         categories = builderList.keys()
         categories.sort()
-  
+        json += '['
+
         # Display the boxes by category group.
         for category in categories:
             # Last category? We set the "last" flag.
@@ -538,6 +654,28 @@ class ConsoleStatusResource(HtmlResource):
             for builder in builderList[category]:
                 introducedIn = None
                 firstNotIn = None
+
+                cached_value = self.cache.get(builder, revision.revision)
+                if cached_value:
+                    debugInfo["from_cache"] += 1
+                    subs["url"] = cached_value.url
+                    subs["title"] = cached_value.title
+                    subs["color"] = cached_value.color
+                    subs["tag"] = cached_value.tag
+                    data += res.main_line_status_box.substitute(subs)
+
+                    json += ("{'url': '%s', 'title': '%s', 'color': '%s',"
+                             " 'name': '%s'}," % (subs["url"], subs["title"],
+                                                  subs["color"],
+                                                  urllib.quote(builder)))
+
+                    # If the box is red, we add the explaination in the details
+                    # section.
+                    if cached_value.details and cached_value.color == "failure":
+                      details += cached_value.details
+
+                    continue
+
 
                 # Find the first build that does not include the revision.
                 for build in allBuilds[builder]:
@@ -586,6 +724,9 @@ class ConsoleStatusResource(HtmlResource):
                 subs["color"] = resultsClass
                 subs["tag"] = tag
 
+                json += ("{'url': '%s', 'title': '%s', 'color': '%s',"
+                         " 'name': '%s'}," % (url, title, resultsClass,
+                                              urllib.quote(builder)))
                 data += res.main_line_status_box.substitute(subs)
 
                 # If the box is red, we add the explaination in the details
@@ -593,11 +734,24 @@ class ConsoleStatusResource(HtmlResource):
                 if current_details and resultsClass == "failure":
                     details += current_details
 
+                # Add this box to the cache if it's completed so we don't have
+                # to compute it again.
+                if resultsClass != "running" and resultsClass != "notstarted":
+                  debugInfo["added_blocks"] += 1
+                  self.cache.insert(builder, revision.revision, resultsClass, title,
+                                    current_details, url, tag)
+                  tempCache.insert(builder, revision.revision)
+
+        json += ']'
         data += res.main_line_status_footer.substitute(subs)
+
+        if jsonFormat:
+            return (json, details)
+
         return (data, details)
 
     def displayPage(self, request, status, builderList, allBuilds, revisions,
-                    categories, branch, debugInfo):
+                    categories, branch, tempCache, debugInfo, jsonFormat=False):
         """Display the console page."""
         # Build the main template directory with all the informations we have.
         subs = dict()
@@ -617,6 +771,7 @@ class ConsoleStatusResource(HtmlResource):
         # Show the header.
         #
 
+        json = "["
         data = res.top_header.substitute(subs)
         data += res.top_info_name.substitute(subs)
 
@@ -655,8 +810,9 @@ class ConsoleStatusResource(HtmlResource):
         # Display the build slaves status.
         if builderList:
             dataToAdd = self.displaySlaveLine(status, builderList, debugInfo,
-                                              subs)
+                                              subs, jsonFormat)
             data += dataToAdd
+            json += dataToAdd + ","
 
         # For each revision we show one line
         for revision in revisions:
@@ -668,7 +824,7 @@ class ConsoleStatusResource(HtmlResource):
             # Fill the dictionnary with these new information
             subs["revision"] = revision.revision
             if revision.revlink:
-                subs["revision_link"] = ("<a href=\"%s\">%s</a>" 
+                subs["revision_link"] = ("<a href=\"%s\">%s</a>"
                                          % (revision.revlink,
                                             revision.revision))
             else:
@@ -679,6 +835,10 @@ class ConsoleStatusResource(HtmlResource):
             subs["comments"] = comment.replace('<', '&lt;').replace('>', '&gt;')
             comment_quoted = urllib.quote(subs["comments"].encode("utf-8"))
 
+            json += ( "{'revision': '%s', 'date': '%s', 'comments': '%s',"
+                      "'results' : " ) % (subs["revision"], subs["date"],
+                                          comment_quoted)
+
             # Display the revision number and the committer.
             data += res.main_line_info.substitute(subs)
 
@@ -686,13 +846,16 @@ class ConsoleStatusResource(HtmlResource):
             (dataToAdd, details) = self.displayStatusLine(builderList,
                                                             allBuilds,
                                                             revision,
+                                                            tempCache,
                                                             debugInfo,
-                                                            subs)
+                                                            subs,
+                                                            jsonFormat)
             data += dataToAdd
+            json += dataToAdd + "}"
 
             # Calculate the td span for the comment and the details.
             subs["span"] = len(builderList) + 2
-            
+
             # Display the details of the failures, if any.
             if details:
               subs["details"] = details
@@ -708,6 +871,11 @@ class ConsoleStatusResource(HtmlResource):
         #
         debugInfo["load_time"] = time.time() - debugInfo["load_time"]
         data += res.bottom.substitute(subs)
+
+        json += "]"
+        if jsonFormat:
+            return json
+
         return data
 
     def body(self, request):
@@ -726,6 +894,9 @@ class ConsoleStatusResource(HtmlResource):
         branch = request.args.get("branch", [ANYBRANCH])[0]
         # List of all the committers name to display on the page.
         devName = request.args.get("name", [])
+        # json format.
+        jsonFormat = request.args.get("json", [False])[0]
+
 
         # and the data we want to render
         status = self.getStatus(request)
@@ -768,10 +939,26 @@ class ConsoleStatusResource(HtmlResource):
                                                 builders,
                                                 debugInfo)
 
+        tempCache = TemporaryCache()
         debugInfo["added_blocks"] = 0
+        debugInfo["from_cache"] = 0
 
         data = ""
+
+        if request.args.get("display_cache", None):
+            data += "<br>Global Cache"
+            data += self.cache.display()
+            data += "<br>Temporary Cache"
+            data += tempCache.display()
+
+        if (jsonFormat and int(jsonFormat) == 1):
+            revisions = revisions[0:1]
         data += self.displayPage(request, status, builderList, allBuilds,
-                                revisions, categories, branch, debugInfo)
+                                revisions, categories, branch, tempCache,
+                                debugInfo, jsonFormat)
+
+        if not devName and branch == ANYBRANCH and not categories and not jsonFormat:
+          tempCache.updateGlobalCache(self.cache)
+          self.cache.trim()
 
         return data

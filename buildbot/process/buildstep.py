@@ -449,7 +449,7 @@ class RemoteShellCommand(LoggedRemoteCommand):
     def __init__(self, workdir, command, env=None,
                  want_stdout=1, want_stderr=1,
                  timeout=20*60, maxTime=None, logfiles={},
-                 usePTY="slave-config", logEnviron=True):
+                 usePTY="slave-config", logEnviron=True, **kwargs):
         """
         @type  workdir: string
         @param workdir: directory where the command ought to run,
@@ -1067,7 +1067,7 @@ class LoggingBuildStep(BuildStep):
         self.step_status.setText(self.describe(True) +
                                  ["failed", "slave", "lost"])
         self.step_status.setText2(["failed", "slave", "lost"])
-        return self.finished(FAILURE)
+        return self.finished(EXCEPTION)
 
     # to refine the status output, override one or more of the following
     # methods. Change as little as possible: start with the first ones on

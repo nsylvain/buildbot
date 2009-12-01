@@ -6,6 +6,8 @@ from buildbot.status import builder
 from buildbot.status.builder import SUCCESS, WARNINGS, FAILURE, SKIPPED, EXCEPTION
 from buildbot import version, util
 
+import datetime
+
 class ITopBox(Interface):
     """I represent a box in the top row of the waterfall display: the one
     which shows the status of the last build for each builder."""
@@ -287,6 +289,13 @@ class HtmlResource(resource.Resource):
         if request.method == "HEAD":
             request.setHeader("content-length", len(data))
             return ''
+
+        # Make sure we get fresh pages.
+        now = datetime.datetime.utcnow()
+        expires = now + datetime.timedelta(seconds=60)
+        request.setHeader("Expires", expires.strftime("%a, %d %b %Y %H:%M:%S GMT"))
+        request.setHeader("Pragma", "no-cache")
+
         return data
 
     def getStatus(self, request):
