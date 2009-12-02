@@ -126,7 +126,8 @@ def rmdirRecursive(dir):
         if os.path.isdir(full_name):
             rmdirRecursive(full_name)
         else:
-            os.chmod(full_name, 0700)
+            if os.path.isfile(full_name):
+                os.chmod(full_name, 0700)
             os.remove(full_name)
     os.rmdir(dir)
 
@@ -1878,7 +1879,7 @@ class SVN(SourceBase):
         args = ['--xml']
         if self.ignore_ignores:
           args.append('--no-ignore')
-        return self._dovccmd('status', args, keepStdout=True,
+        return self._dovccmd('status', args, keepStdout=True, sendStdout=False,
                              cb=self._purgeAndUpdate2)
 
     def _purgeAndUpdate2(self, res):
@@ -1890,6 +1891,7 @@ class SVN(SourceBase):
                 continue
             filepath = os.path.join(self.builder.basedir, self.workdir,
                                     filename)
+            self.sendStatus({'stdout': "%s\n" % filepath})
             if os.path.isfile(filepath):
                 os.chmod(filepath, 0700)
                 os.remove(filepath)
