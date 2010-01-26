@@ -12,12 +12,12 @@ from twisted.python.procutils import which
 
 from buildbot.slave.interfaces import ISlaveCommand
 from buildbot.slave.registry import registerSlaveCommand
-from buildbot.util import to_text
+from buildbot.util import to_text, remove_userpassword
 
 # this used to be a CVS $-style "Revision" auto-updated keyword, but since I
 # moved to Darcs as the primary repository, this is updated manually each
 # time this file is changed. The last cvs_ver that was here was 1.51 .
-command_version = "2.8"
+command_version = "2.9"
 
 # version history:
 #  >=1.17: commands are interruptable
@@ -1811,6 +1811,7 @@ class SVN(SourceBase):
     ['keep_on_purge']:     Files and directories to keep between updates
     ['ignore_ignores']:    Ignore ignores when purging changes
     ['always_purge']:      Always purge local changes after each build
+    ['depth']:     	   Pass depth argument to subversion 1.5+ 
     """
 
     header = "svn operation"
@@ -1832,6 +1833,9 @@ class SVN(SourceBase):
             self.svn_args.extend(["--password", Obfuscated(args['password'], "XXXX")])
         if args.get('extra_args', None) is not None:
             self.svn_args.extend(args['extra_args'])
+
+	if args.has_key('depth'):
+	    self.svn_args.extend(["--depth",args['depth']])
 
     def _dovccmd(self, command, args, rootdir=None, cb=None, **kwargs):
         if rootdir is None:
@@ -2206,6 +2210,12 @@ class Git(SourceBase):
         else:
             return defer.succeed(0)
 
+    def _didHeadCheckout(self, res):
+        # Rename branch, so that the repo will have the expected branch name
+        # For further information about this, see the commit message
+        command = ['branch', '-M', self.branch]
+        return self._dovccmd(command, self._initSubmodules)
+        
     def _didFetch(self, res):
         if self.revision:
             head = self.revision
@@ -2215,19 +2225,35 @@ class Git(SourceBase):
         # That is not sufficient. git will leave unversioned files and empty
         # directories. Clean them up manually in _didReset.
         command = ['reset', '--hard', head]
-        return self._dovccmd(command, self._initSubmodules)
+        return self._dovccmd(command, self._didHeadCheckout)
 
-    # Update first runs "git clean", removing local changes, This,
-    # combined with the later "git reset" equates clobbering the repo,
+    # Update first runs "git clean", removing local changes,
+    # if the branch to be checked out has changed.  This, combined
+    # with the later "git reset" equates clobbering the repo,
     # but it's much more efficient.
     def doVCUpdate(self):
-        command = ['clean', '-f', '-d']
-        if self.ignore_ignores:
-            command.append('-x')
-        return self._dovccmd(command, self._didClean)
+        try:
+            # Check to see if our branch has changed
+            diffbranch = self.sourcedata != self.readSourcedata()
+        except IOError:
+            diffbranch = False
+        if diffbranch:
+            command = ['git', 'clean', '-f', '-d']
+            if self.ignore_ignores:
+                command.append('-x')
+            c = ShellCommand(self.builder, command, self._fullSrcdir(),
+                             sendRC=False, timeout=self.timeout, usePTY=False)
+            self.command = c
+            d = c.start()
+            d.addCallback(self._abandonOnFailure)
+            d.addCallback(self._didClean)
+            return d
+        return self._didClean(None)
 
     def _doFetch(self, dummy):
-        command = ['fetch', '-t', self.repourl, self.branch]
+        # The plus will make sure the repo is moved to the branch's
+        # head even if it is not a simple "fast-forward"
+        command = ['fetch', '-t', self.repourl, '+%s' % self.branch]
         self.sendStatus({"header": "fetching branch %s from %s\n"
                                         % (self.branch, self.repourl)})
         return self._dovccmd(command, self._didFetch)
@@ -2798,6 +2824,9 @@ class Mercurial(SourceBase):
                 else:
                     repourl = self.repourl
 
+                oldurl = remove_userpassword(oldurl)
+                repourl = remove_userpassword(repourl)
+
                 if oldurl != repourl:
                     self.clobber = self._clobber
                     msg = "RepoURL changed from '%s' in wc to '%s' in update. Clobbering" % (oldurl, repourl)
@@ -2886,7 +2915,8 @@ class P4Base(SourceBase):
             command.extend(['-P', self.p4passwd])
         if self.p4client:
             command.extend(['-c', self.p4client])
-        command.extend(['changes', '-m', '1', '#have'])
+        # add '-s submitted' for bug #626
+        command.extend(['changes', '-s', 'submitted', '-m', '1', '#have'])
         c = ShellCommand(self.builder, command, self.builder.basedir,
                          environ=self.env, timeout=self.timeout,
                          maxTime=self.maxTime, sendStdout=True,
