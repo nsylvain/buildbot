@@ -302,6 +302,17 @@ the Builders you are interested in here.</p>
 
 %(show_builders_input)s
 
+<h2>Limiting the Builds that are Displayed</h2>
+
+<p>By adding one or more <tt>committer=</tt> arguments, the display will be
+limited to showing builds that were started by the given committer.  If no
+<tt>committer=</tt> arguments are provided, all builds will be displayed.</p>
+
+<p>To view a Waterfall page with only a subset of Builds displayed, select
+the committers your are interested in here.</p>
+
+%(show_committers_input)s
+
 
 <h2>Auto-reloading the Page</h2>
 
@@ -380,6 +391,18 @@ class WaterfallHelp(HtmlResource):
                                     ) % (bn, checked, bn)
         show_builders_input += '</table>\n'
 
+        committers = [c for c in request.args.get("committer", []) if c]
+        committers.append('')
+        show_committers_input = '<table>\n'
+        for c in committers:
+            show_committers_input += ('<tr>'
+                                      '<td>Show committer: '
+                                      '<input type="text" name="committer" '
+                                      'value="%s">'
+                                      '</td></tr>\n'
+                                      ) % (html.escape(c),)
+        show_committers_input += '</table>\n'
+
         # a couple of radio-button selectors for refresh time will appear
         # just after that text
         show_reload_input = '<table>\n'
@@ -407,6 +430,7 @@ class WaterfallHelp(HtmlResource):
         fields = {"show_events_input": show_events_input,
                   "show_branches_input": show_branches_input,
                   "show_builders_input": show_builders_input,
+                  "show_committers_input": show_committers_input,
                   "show_reload_input": show_reload_input,
                   "failures_only_input": failures_only_input,
                   }
@@ -673,6 +697,7 @@ class WaterfallStatusResource(HtmlResource):
         filterCategories = request.args.get('category', [])
         filterBranches = [b for b in request.args.get("branch", []) if b]
         filterBranches = map_branches(filterBranches)
+        filterCommitters = [c for c in request.args.get("committer", []) if c]
         maxTime = int(request.args.get("last_time", [util.now()])[0])
         if "show_time" in request.args:
             minTime = maxTime - int(request.args["show_time"][0])
@@ -722,7 +747,8 @@ class WaterfallStatusResource(HtmlResource):
 
         for s in sources:
             gen = insertGaps(s.eventGenerator(filterBranches,
-                                              filterCategories),
+                                              filterCategories,
+                                              filterCommitters),
                              showEvents,
                              lastEventTime)
             sourceGenerators.append(gen)
