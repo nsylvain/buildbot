@@ -280,9 +280,11 @@ class ChangeMaster(service.MultiService):
             log.msg("pruning %i changes" % (len(self.changes) - self.changeHorizon))
             self.changes = self.changes[-self.changeHorizon:]
 
-    def eventGenerator(self, branches=[], categories=[], committers=[]):
+    def eventGenerator(self, branches=[], categories=[], committers=[], minTime=0):
         for i in range(len(self.changes)-1, -1, -1):
             c = self.changes[i]
+            if (c.when < minTime):
+                break
             if (not branches or c.branch in branches) and (
                 not categories or c.category in categories) and (
                 not committers or c.who in committers):
