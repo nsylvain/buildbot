@@ -308,9 +308,9 @@ class Disconnect(RunMixin, unittest.TestCase):
         step1 = bs.getSteps()[1]
         self.failUnlessEqual(step1.getText(), ["remote", "delay", "2 secs",
                                                "failed", "slave", "lost"])
-        self.failUnlessEqual(step1.getResults()[0], builder.FAILURE)
+        self.failUnlessEqual(step1.getResults()[0], builder.EXCEPTION)
 
-        self.failUnlessEqual(bs.getResults(), builder.FAILURE)
+        self.failUnlessEqual(bs.getResults(), builder.EXCEPTION)
 
     def submitBuild(self):
         ss = SourceStamp()
