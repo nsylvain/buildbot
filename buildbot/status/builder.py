@@ -796,7 +796,7 @@ class BuildRequestStatus:
         result['submittedAt'] = self.getSubmitTime()
 
         # Transient
-        result['builds'] = [build.asDict() for build in self.getBuilds()]
+        result['builds'] = [build.getNumber() for build in self.getBuilds()]
         return result
 
 
