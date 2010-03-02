@@ -41,9 +41,10 @@ class BuildStatusStatusResource(HtmlResource):
 
         # Display each step, starting by the last one.
         for i in range(len(build.getSteps()) - 1, -1, -1):
-            if build.getSteps()[i].getText():
+            step = build.getSteps()[i]
+            if step.isStarted() and step.getText():
                 data += " <tr>\n"
-                data += IBox(build.getSteps()[i]).getBox(request).td(align="center")
+                data += IBox(step).getBox(request).td(align="center")
                 data += " </tr>\n"
 
         # Display the bottom box with the build number in it.
