@@ -699,6 +699,7 @@ class BuildSetStatus:
         self.finishedWatchers = []
         self.stillHopeful = True
         self.finished = False
+        self.results = None
 
     def setBuildRequestStatuses(self, buildRequestStatuses):
         self.buildRequests = buildRequestStatuses
@@ -752,6 +753,21 @@ class BuildSetStatus:
         d = defer.Deferred()
         self.finishedWatchers.append(d)
         return d
+
+    def asDict(self):
+        result = {}
+        # Constant
+        result['source'] = self.getSourceStamp().asDict()
+        result['reason'] = self.getReason()
+        result['results'] = self.getResults()
+        result['builderNames'] = self.getBuilderNames()
+        result['isFinished'] = self.isFinished()
+
+        # Transient
+        result['buildRequests'] = [
+            buildRequest.asDict() for build in self.getBuildRequests()]
+        return result
+
 
 class BuildRequestStatus:
     implements(interfaces.IBuildRequestStatus)
