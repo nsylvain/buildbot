@@ -738,7 +738,7 @@ class BuildSetStatus:
         return self.buildRequests
     def isFinished(self):
         return self.finished
-    
+
     def waitUntilSuccess(self):
         if self.finished or not self.stillHopeful:
             # the deferreds have already fired
@@ -1118,8 +1118,8 @@ class BuildStepStatus(styles.Versioned):
         # Transient
         result['text'] = self.getText()
         result['results'] = self.getResults()
-        result['is_started'] = self.isStarted()
-        result['is_finished'] = self.isFinished()
+        result['isStarted'] = self.isStarted()
+        result['isFinished'] = self.isFinished()
         result['statistics'] = self.statistics
         result['times'] = self.getTimes()
         result['expectations'] = self.getExpectations()
@@ -1542,8 +1542,9 @@ class BuildStatus(styles.Versioned):
     def asDict(self):
         result = {}
         # Constant
+        result['builderName'] = self.builder.name
         result['number'] = self.getNumber()
-        result['source_stamp'] = self.getSourceStamp().asDict()
+        result['sourceStamp'] = self.getSourceStamp().asDict()
         result['reason'] = self.getReason()
         result['requests'] = [r.asDict() for r in self.getRequests()]
         result['blame'] = self.getResponsibleUsers()
@@ -1562,9 +1563,9 @@ class BuildStatus(styles.Versioned):
         result['eta'] = self.getETA()
         result['steps'] = [bss.asDict() for bss in self.steps]
         if self.getCurrentStep():
-            result['current_step'] = self.getCurrentStep().asDict()
+            result['currentStep'] = self.getCurrentStep().asDict()
         else:
-            result['current_step'] = None
+            result['currentStep'] = None
         return result
 
 
@@ -2160,11 +2161,11 @@ class BuilderStatus(styles.Versioned):
         current_builds = [b.getNumber() for b in self.currentBuilds]
         cached_builds = list(set(self.buildCache.keys() + current_builds))
         cached_builds.sort()
-        result['cached_builds'] = cached_builds
-        result['current_builds'] = current_builds
+        result['cachedBuilds'] = cached_builds
+        result['currentBuilds'] = current_builds
         result['state'] = self.getState()[0]
         # BuildRequestStatus doesn't have a number so display the SourceStamp.
-        result['pending_builds'] = [
+        result['pendingBuilds'] = [
             b.getSourceStamp().asDict() for b in self.getPendingBuilds()
         ]
         return result
@@ -2242,11 +2243,16 @@ class SlaveStatus:
 
     def asDict(self):
         result = {}
-        # Transient
+        # Constant
+        result['name'] = self.getName()
+        result['access_uri'] = self.getAccessURI()
+
+        # Transient (since it changes when the slave reconnects)
         result['host'] = self.getHost()
         result['admin'] = self.getAdmin()
         result['version'] = self.getVersion()
         result['connected'] = self.isConnected()
+        result['runningBuilds'] = [b.asDict() for b in self.getRunningBuilds()]
         return result
 
 
@@ -2528,8 +2534,9 @@ class Status:
     def asDict(self):
         result = {}
         # Constant
-        result['name'] = self.getProjectName()
-        result['url'] = self.getProjectURL()
+        result['projectName'] = self.getProjectName()
+        result['projectURL'] = self.getProjectURL()
+        result['buildbotURL'] = self.getBuildbotURL()
         # TODO: self.getSchedulers()
         # self.getChangeSources()
         return result

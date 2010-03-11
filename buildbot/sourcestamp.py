@@ -102,7 +102,6 @@ class SourceStamp(util.ComparableMixin):
         # Constant
         result['revision'] = self.revision
         # TODO(maruel): Make the patch content a suburl.
-        result['patch'] = self.patch
         result['branch'] = self.branch
         result['changes'] = [c.asDict() for c in getattr(self, 'changes', [])]
         return result
