@@ -765,7 +765,7 @@ class BuildSetStatus:
 
         # Transient
         result['buildRequests'] = [
-            buildRequest.asDict() for build in self.getBuildRequests()]
+            build.asDict() for build in self.getBuildRequests()]
         return result
 
 

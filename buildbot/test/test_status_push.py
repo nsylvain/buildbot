@@ -29,6 +29,7 @@ from buildbot.process import factory
 from buildbot.buildslave import BuildSlave
 from buildbot.config import BuilderConfig
 from buildbot.scheduler import Scheduler
+from buildbot.status.persistent_queue import IQueue
 from buildbot.status.status_push import StatusPush, HttpStatusPush
 from buildbot.steps import dummy
 
@@ -46,11 +47,18 @@ c['slavePortnum'] = 0
 c['projectUrl'] = 'example.com/yay'
 c['projectName'] = 'Pouet'
 c['buildbotURL'] = 'build.example.com/yo'
+
+def doNothing(self):
+    # Creates self.fake_queue to store the object.
+    assert IQueue.providedBy(self.queue)
+    if not hasattr(self, 'fake_queue'):
+        self.fake_queue = []
+    items = self.queue.popChunk()
+    self.fake_queue.extend(items)
+    self.queueNextServerPush()
 """
 
 config_no_http = (config_base + """
-def doNothing():
-    pass
 c['status'] = [StatusPush(serverPushCb=doNothing)]
 """)
 
@@ -59,8 +67,6 @@ c['status'] = [HttpStatusPush('http://127.0.0.1:<PORT>/receiver')]
 """)
 
 config_no_http_no_filter = (config_base + """
-def doNothing():
-    pass
 c['status'] = [StatusPush(serverPushCb=doNothing, filter=False)]
 """)
 
@@ -740,7 +746,7 @@ class StatusPushTestBase(RunMixin, unittest.TestCase):
         FindItem(items, 'buildFinished', 'payload', 'build', 'steps',
                 None, 'times', [345, None])
 
-        for i in range(len(expected)):
+        for i in range(min(len(expected), len(items))):
             self.assertEqual(expected[i], items[i], str(i))
         self.assertEqual(len(expected), len(items))
 
@@ -784,7 +790,9 @@ class StatusPushTest(StatusPushTestBase):
                              for (k, v) in items.iteritems()])
             else:
                 return items
-        self.verifyItems(TupleToList(self.getStatusPush().queue.items()),
+        self.assertEqual(0, self.getStatusPush().queue.nbItems())
+        # Grabs fake_queue created in DoNothing().
+        self.verifyItems(TupleToList(self.getStatusPush().fake_queue),
                          self.expected)
         self.master = None
 

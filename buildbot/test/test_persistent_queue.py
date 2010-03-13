@@ -1,6 +1,7 @@
 # -*- test-case-name: buildbot.test.test_persistent_queue -*-
 
 import os
+import shutil
 from twisted.trial import unittest
 
 from buildbot.status.persistent_queue import DequeMemoryQueue, DiskQueue, \
@@ -9,17 +10,15 @@ from buildbot.status.persistent_queue import DequeMemoryQueue, DiskQueue, \
 class test_Queues(unittest.TestCase):
     def setUp(self):
         if os.path.isdir('fake_dir'):
-            for i in os.listdir('fake_dir'):
-                if i in ('.', '..'):
-                    continue
-                os.remove(i)
+            shutil.rmtree('fake_dir')
 
     def tearDown(self):
         if os.path.isdir('fake_dir'):
             self.assertEqual([], os.listdir('fake_dir'))
 
     def testQueued(self):
-        # Verify behavior when starting up with queued items on disk.a
+        # Verify behavior when starting up with queued items on disk.
+        os.mkdir('fake_dir')
         WriteFile(os.path.join('fake_dir', '3'), 'foo3')
         WriteFile(os.path.join('fake_dir', '5'), 'foo5')
         WriteFile(os.path.join('fake_dir', '8'), 'foo8')
