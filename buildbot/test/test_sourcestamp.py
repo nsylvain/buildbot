@@ -10,6 +10,7 @@ class SourceStampTest(unittest.TestCase):
         EXPECTED = {
             'revision': None,
             'branch':  None,
+            'hasPatch': False,
             'changes': [],
           }
         self.assertEqual(EXPECTED, SourceStamp().asDict())
@@ -18,6 +19,7 @@ class SourceStampTest(unittest.TestCase):
         EXPECTED = {
             'revision': 'Rev',
             'branch':  'Br',
+            'hasPatch': False,
             'changes': [],
           }
         self.assertEqual(EXPECTED,
@@ -37,6 +39,7 @@ class SourceStampTest(unittest.TestCase):
         EXPECTED = {
             'revision': 'rev3',
             'branch': 'br3',
+            'hasPatch': True,
             'changes': [
                 {
                     'branch': 'br2',

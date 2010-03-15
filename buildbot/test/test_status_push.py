@@ -154,6 +154,7 @@ EXPECTED = [
                 'source': {
                     'branch': None,
                     'changes': [],
+                    'hasPatch': False,
                     'revision': None
                 },
                 'submittedAt': 'yesterday',
@@ -192,6 +193,7 @@ EXPECTED = [
                         'source': {
                             'branch': None,
                             'changes': [],
+                            'hasPatch': False,
                             'revision': None
                         },
                         'submittedAt': 'yesterday'
@@ -201,6 +203,7 @@ EXPECTED = [
                 'slave': 'bot1',
                 'sourceStamp': {
                     'branch': None,
+                    'hasPatch': False,
                     'changes': [],
                     'revision': None
                 },
@@ -319,6 +322,7 @@ EXPECTED = [
                         'builds': [0],
                         'source': {
                             'branch': None,
+                            'hasPatch': False,
                             'changes': [],
                             'revision': None},
                         'submittedAt': 'yesterday'
@@ -329,6 +333,7 @@ EXPECTED = [
                 'sourceStamp': {
                     'branch': None,
                     'changes': [],
+                    'hasPatch': False,
                     'revision': None
                 },
                 'steps': [
